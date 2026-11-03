@@ -29,12 +29,19 @@ const app = express();
 const server = http.createServer(app);
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const rawCorsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const corsOrigin =
+  rawCorsOrigin === '*'
+    ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) =>
+        callback(null, true)
+    : rawCorsOrigin.includes(',')
+    ? rawCorsOrigin.split(',').map((s) => s.trim())
+    : rawCorsOrigin;
 
 // Setup Socket.IO
 const io = new SocketIOServer(server, {
   cors: {
-    origin: CORS_ORIGIN,
+    origin: rawCorsOrigin === '*' ? true : corsOrigin,
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     credentials: true,
   },
@@ -52,7 +59,7 @@ app.use(
 
 app.use(
   cors({
-    origin: CORS_ORIGIN,
+    origin: corsOrigin as any,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -123,7 +130,7 @@ async function startServer() {
     await connectDatabase();
     server.listen(PORT, () => {
       logger.info(`FriendMap backend running on port ${PORT}`);
-      logger.info(`CORS enabled for origin: ${CORS_ORIGIN}`);
+      logger.info(`CORS enabled for origin: ${rawCorsOrigin}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
