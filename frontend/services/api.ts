@@ -59,6 +59,9 @@ export const authApi = {
     password: string;
   }) => api.post('/api/auth/register', data),
 
+  googleLogin: (data: { credential?: string; idToken?: string; accessToken?: string }) =>
+    api.post('/api/auth/google', data),
+
   me: () => api.get('/api/auth/me'),
 
   logout: () => api.post('/api/auth/logout'),

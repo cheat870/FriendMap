@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Eye, EyeOff, MapPin, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import GoogleLoginButton from '@/components/auth/GoogleLoginButton';
 import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
 
@@ -120,6 +121,19 @@ export default function LoginPage() {
                 'Sign in'
               )}
             </button>
+
+            {/* Divider */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-gray-400 font-medium">ឬ (OR)</span>
+              </div>
+            </div>
+
+            {/* Google Sign-In */}
+            <GoogleLoginButton mode="signin" />
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">

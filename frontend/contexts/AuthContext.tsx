@@ -50,6 +50,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
+  googleLogin: (data: { credential?: string; idToken?: string; accessToken?: string }) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<UserProfile>) => void;
 }
@@ -134,6 +135,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [setAuth, router]
   );
 
+  const googleLogin = useCallback(
+    async (data: { credential?: string; idToken?: string; accessToken?: string }) => {
+      const response = await authApi.googleLogin(data);
+      const res = response.data;
+      const payload = res?.data ?? res;
+      const u = payload?.user ?? payload;
+      const t = payload?.accessToken ?? payload?.token ?? res?.accessToken ?? res?.token;
+      const expiresIn = payload?.expiresIn ?? res?.expiresIn ?? 900;
+      setAuth(u, t);
+      if (t) {
+        Cookies.set('fm_token', t, {
+          expires: expiresIn ? expiresIn / 86400 : 7,
+          sameSite: 'lax',
+        });
+      }
+      toast.success('Signed in with Google!');
+      router.push('/map');
+    },
+    [setAuth, router]
+  );
+
   const logout = useCallback(() => {
     authApi.logout().catch(() => {});
     clearAuth();
@@ -159,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: isLoading,
         login,
         register,
+        googleLogin,
         logout,
         updateUser,
       }}
