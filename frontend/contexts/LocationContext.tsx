@@ -8,6 +8,7 @@ import React, {
   useState,
   useCallback,
 } from 'react';
+import Cookies from 'js-cookie';
 import { locationApi } from '@/services/api';
 import { useAuthStore } from '@/contexts/AuthContext';
 import { LocationCoords } from '@/types';
@@ -61,7 +62,11 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   const sendUpdate = useCallback(
     async (coords: LocationCoords) => {
-      if (!token) return;
+      const activeToken =
+        token ||
+        useAuthStore.getState().token ||
+        Cookies.get('fm_token');
+      if (!activeToken) return;
       try {
         await locationApi.update({
           latitude: coords.latitude,
@@ -96,23 +101,26 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onError = (err: GeolocationPositionError) => {
-      console.warn('Geolocation error:', err);
-      // Fallback for timeout or high accuracy failure
-      if (err.code === 3) {
-        navigator.geolocation.getCurrentPosition(onSuccess, (e) => setError(e), {
+      console.warn('Geolocation high accuracy fallback:', err);
+      // Fallback for timeout or position unavailable
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (fallbackErr) => {
+          console.warn('Geolocation low accuracy error:', fallbackErr);
+          setError(fallbackErr);
+        },
+        {
           enableHighAccuracy: false,
-          timeout: 15000,
-          maximumAge: 10000,
-        });
-      } else {
-        setError(err);
-      }
+          timeout: 20000,
+          maximumAge: 30000,
+        }
+      );
     };
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
       enableHighAccuracy: true,
       timeout: 10000,
-      maximumAge: 0,
+      maximumAge: 5000,
     });
   }, [isSupported, sendUpdate]);
 
@@ -154,7 +162,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         console.warn('Geolocation watch error:', err);
         setError(err);
       },
-      { enableHighAccuracy: true, maximumAge: 3_000, timeout: 20_000 }
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 25_000 }
     );
     setIsSharing(true);
   }, [isSupported, requestLocation, sendUpdate]);
@@ -167,6 +175,46 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     setIsSharing(false);
     locationApi.stopSharing().catch(() => {});
   }, []);
+
+  // 1. Auto-start sharing whenever user is authenticated anywhere in the app
+  useEffect(() => {
+    const activeToken = token || Cookies.get('fm_token');
+    if (activeToken && isSupported) {
+      startSharing();
+    }
+  }, [token, isSupported, startSharing]);
+
+  // 2. Restore last stored location from backend on initial mount
+  useEffect(() => {
+    const activeToken = token || Cookies.get('fm_token');
+    if (activeToken && !position) {
+      locationApi
+        .getMyLocation()
+        .then((res) => {
+          if (res.data?.location) {
+            const loc = res.data.location;
+            setPosition({
+              latitude: Number(loc.latitude),
+              longitude: Number(loc.longitude),
+              accuracy: loc.accuracy,
+              heading: loc.heading,
+              speed: loc.speed,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [token, position]);
+
+  // 3. Periodic heartbeat (every 25s) to guarantee server has fresh coordinates even for stationary PCs/laptops
+  useEffect(() => {
+    const activeToken = token || Cookies.get('fm_token');
+    if (!activeToken || !position) return;
+    const interval = setInterval(() => {
+      sendUpdate(position);
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [token, position, sendUpdate]);
 
   // Auto-stop on unmount
   useEffect(() => {

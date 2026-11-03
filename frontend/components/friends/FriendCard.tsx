@@ -1,8 +1,9 @@
 'use client';
 
+import React, { useMemo } from 'react';
 import { MapPin, Navigation, MessageSquare, MoreVertical, Radio } from 'lucide-react';
 import Avatar from '@/components/ui/Avatar';
-import { formatDistance, formatLastSeen } from '@/services/location.service';
+import { formatDistance, formatLastSeen, calculateDistance } from '@/services/location.service';
 
 interface FriendCardProps {
   friend: any;
@@ -21,6 +22,23 @@ export default function FriendCard({
 }: FriendCardProps) {
   const isOnline = friend.isOnline || (friend.lastActiveAt && (Date.now() - new Date(friend.lastActiveAt).getTime()) < 300000);
   const hasLocation = Boolean(friend.location?.latitude && friend.location?.longitude);
+
+  const effectiveDistanceMeters = useMemo(() => {
+    if (friend.distanceMeters !== undefined && friend.distanceMeters !== null) {
+      return friend.distanceMeters;
+    }
+    if (userLocation && hasLocation) {
+      return Math.round(
+        calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          Number(friend.location.latitude),
+          Number(friend.location.longitude)
+        )
+      );
+    }
+    return undefined;
+  }, [friend.distanceMeters, userLocation, hasLocation, friend.location]);
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow">
@@ -45,10 +63,12 @@ export default function FriendCard({
           <p className="text-xs text-gray-400 truncate">@{friend.username}</p>
 
           <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
-            {hasLocation && friend.distanceMeters !== undefined ? (
+            {hasLocation ? (
               <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                <MapPin className="w-3 h-3" />
-                {formatDistance(friend.distanceMeters)}
+                <MapPin className="w-3 h-3 text-indigo-600" />
+                {effectiveDistanceMeters !== undefined
+                  ? formatDistance(effectiveDistanceMeters)
+                  : 'បានចែករំលែកទីតាំង (Live Location)'}
               </span>
             ) : friend.sharing?.theyShareWithMe === false ? (
               <span className="text-gray-400">ទីតាំងត្រូវបានបិទ (Hidden)</span>

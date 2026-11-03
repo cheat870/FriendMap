@@ -258,6 +258,45 @@ export async function sendRequest(req: Request, res: Response): Promise<void> {
       },
     });
     if (existing) {
+      if (existing.senderId === receiverId && existing.receiverId === senderId) {
+        // Mutual friend request -> auto-accept immediately!
+        const uid1 = senderId < receiverId ? senderId : receiverId;
+        const uid2 = senderId < receiverId ? receiverId : senderId;
+
+        const [, friendship] = await prisma.$transaction([
+          prisma.friendRequest.update({
+            where: { id: existing.id },
+            data: { status: 'accepted' },
+          }),
+          prisma.friendship.create({
+            data: { userId1: uid1, userId2: uid2 },
+          }),
+          prisma.locationSharingPermission.upsert({
+            where: { ownerId_viewerId: { ownerId: senderId, viewerId: receiverId } },
+            create: { ownerId: senderId, viewerId: receiverId, isActive: true },
+            update: { isActive: true },
+          }),
+          prisma.locationSharingPermission.upsert({
+            where: { ownerId_viewerId: { ownerId: receiverId, viewerId: senderId } },
+            create: { ownerId: receiverId, viewerId: senderId, isActive: true },
+            update: { isActive: true },
+          }),
+        ]);
+
+        const io = getIO(req);
+        if (io) {
+          io.to(`user:${senderId}`).emit('friend:accepted', { friendId: receiverId });
+          io.to(`user:${receiverId}`).emit('friend:accepted', { friendId: senderId });
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'Both users added each other - friend request accepted!',
+          data: friendship,
+        });
+        return;
+      }
+
       res.status(409).json({ success: false, message: 'A pending request already exists' });
       return;
     }
@@ -357,7 +396,11 @@ export async function acceptRequest(req: Request, res: Response): Promise<void> 
       { friendshipId: friendship.id, friendId: userId },
       prisma
     );
-    if (io) broadcastNotification(friendRequest.senderId, notification, io);
+    if (io) {
+      broadcastNotification(friendRequest.senderId, notification, io);
+      io.to(`user:${friendRequest.senderId}`).emit('friend:accepted', { friendId: userId });
+      io.to(`user:${userId}`).emit('friend:accepted', { friendId: friendRequest.senderId });
+    }
 
     res.json({
       success: true,

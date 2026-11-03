@@ -6,6 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import FriendCard from '@/components/friends/FriendCard';
 import FriendRequestCard from '@/components/friends/FriendRequestCard';
 import { useLocationContext } from '@/contexts/LocationContext';
+import { useSocket } from '@/contexts/SocketContext';
 import { friendsApi } from '@/services/api';
 import { Search, UserPlus, Users, Inbox, UserCheck } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -53,10 +54,33 @@ export default function FriendsPage() {
     }
   };
 
+  const { socket } = useSocket();
+
   useEffect(() => {
     loadFriends();
     loadRequests();
+
+    // Auto-refresh every 10s
+    const interval = setInterval(loadFriends, 10000);
+    return () => clearInterval(interval);
   }, []);
+
+  // Real-time socket updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleFriendUpdate = () => {
+      loadFriends();
+    };
+
+    socket.on('friend:accepted', handleFriendUpdate);
+    socket.on('location:friend_updated', handleFriendUpdate);
+
+    return () => {
+      socket.off('friend:accepted', handleFriendUpdate);
+      socket.off('location:friend_updated', handleFriendUpdate);
+    };
+  }, [socket]);
 
   // Search users
   const handleSearch = async (e: React.FormEvent) => {
