@@ -21,3 +21,5 @@ services:
         generateValue: true
       - key: CORS_ORIGIN
         value: "*"
+      - key: GOOGLE_CLIENT_ID
+        value: 715090036708-djgkdmqpurkmoafrkav99tom32eu5m71.apps.googleusercontent.com
