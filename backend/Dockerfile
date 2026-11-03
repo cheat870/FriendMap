@@ -1,28 +1,22 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim
 
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci
+
+RUN npm install
 
 COPY . .
+
 RUN npx prisma generate
 RUN npm run build
 
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
 ENV NODE_ENV=production
+ENV PORT=10000
 
-COPY package*.json ./
-COPY prisma ./prisma/
-RUN npm ci --only=production
-RUN npx prisma generate
+EXPOSE 10000 5000
 
-COPY --from=builder /app/dist ./dist
-
-EXPOSE 5000
-
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/server.js"]
