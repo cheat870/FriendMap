@@ -1,0 +1,309 @@
+// Prisma Schema for FriendMap (Local Testing & Development)
+// Note: database/schema.sql contains the complete MySQL 8.0 production schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  displayName   String   @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  bio           String?
+  role          String   @default("user") // "user" | "moderator" | "admin"
+  status        String   @default("active") // "active" | "suspended" | "deleted"
+  emailVerified Boolean  @default(false) @map("email_verified")
+  lastActiveAt  DateTime? @map("last_active_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  sessions      UserSession[]
+  sentRequests  FriendRequest[] @relation("SentRequests")
+  receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  friendships1  Friendship[] @relation("User1Friendships")
+  friendships2  Friendship[] @relation("User2Friendships")
+  blockedUsers  BlockedUser[] @relation("Blocker")
+  blockedBy     BlockedUser[] @relation("Blocked")
+  location      Location?
+  sharingAsOwner  LocationSharingPermission[] @relation("SharingOwner")
+  sharingAsViewer LocationSharingPermission[] @relation("SharingViewer")
+  locationHistory LocationHistory[]
+  conversationsCreated Conversation[]
+  conversationMemberships ConversationMember[]
+  messagesSent  Message[]
+  notifications Notification[]
+  settings      UserSettings?
+  navigationSessions NavigationSession[] @relation("NavigatorSessions")
+  navigationTargetSessions NavigationSession[] @relation("NavigationTargetSessions")
+
+  @@index([status])
+  @@index([role])
+  @@index([lastActiveAt])
+  @@map("users")
+}
+
+model UserSession {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  tokenHash  String   @unique @map("token_hash")
+  deviceInfo String?  @map("device_info")
+  ipAddress  String?  @map("ip_address")
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model FriendRequest {
+  id         String   @id @default(uuid())
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
+  status     String   @default("pending") // "pending" | "accepted" | "rejected" | "cancelled"
+  message    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  sender     User     @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId])
+  @@index([status])
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userId1   String   @map("user_id_1")
+  userId2   String   @map("user_id_2")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user1     User     @relation("User1Friendships", fields: [userId1], references: [id], onDelete: Cascade)
+  user2     User     @relation("User2Friendships", fields: [userId2], references: [id], onDelete: Cascade)
+
+  @@unique([userId1, userId2])
+  @@index([userId2])
+  @@map("friendships")
+}
+
+model BlockedUser {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocked_users")
+}
+
+model Location {
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  altitude    Float?
+  heading     Float?
+  speed       Float?
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([recordedAt])
+  @@map("locations")
+}
+
+model LocationSharingPermission {
+  id        String    @id @default(uuid())
+  ownerId   String    @map("owner_id")
+  viewerId  String    @map("viewer_id")
+  isActive  Boolean   @default(true) @map("is_active")
+  shareMode String    @default("always") @map("share_mode") // "always" | "temporary" | "paused"
+  expiresAt DateTime? @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  owner     User      @relation("SharingOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  viewer    User      @relation("SharingViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, viewerId])
+  @@index([viewerId])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@map("location_sharing_permissions")
+}
+
+model LocationHistory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  altitude   Float?
+  heading    Float?
+  speed      Float?
+  recordedAt DateTime @default(now()) @map("recorded_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([recordedAt])
+  @@index([userId, recordedAt])
+  @@map("location_history")
+}
+
+model Conversation {
+  id            String   @id @default(uuid())
+  type          String   @default("direct") // "direct" | "group"
+  name          String?
+  createdBy     String   @map("created_by")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  creator       User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  members       ConversationMember[]
+  messages      Message[]
+
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  userId         String   @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  conversationId String      @map("conversation_id")
+  senderId       String      @map("sender_id")
+  content        String
+  type           String      @default("text") // "text" | "image" | "location"
+  isDeleted      Boolean     @default(false) @map("is_deleted")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // 'friend_request' | 'friend_accepted' | 'new_message' | 'location_sharing_started' | etc.
+  title     String
+  body      String?
+  data      String?  // JSON string
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model UserSettings {
+  id                     String    @id @default(uuid())
+  userId                 String    @unique @map("user_id")
+  language               String    @default("km")
+  theme                  String    @default("light")
+  shareLocation          Boolean   @default(false) @map("share_location")
+  shareMode              String    @default("all_friends") @map("share_mode")
+  locationHistoryEnabled Boolean   @default(false) @map("location_history_enabled")
+  historyRetentionDays   Int       @default(7) @map("history_retention_days")
+  notifyFriendRequest    Boolean   @default(true) @map("notify_friend_request")
+  notifyMessages         Boolean   @default(true) @map("notify_messages")
+  notifyLocationShare    Boolean   @default(true) @map("notify_location_share")
+  notifyArrival          Boolean   @default(true) @map("notify_arrival")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model NavigationSession {
+  id            String            @id @default(uuid())
+  userId        String            @map("user_id")
+  targetUserId  String            @map("target_user_id")
+  transportMode String            @default("driving") @map("transport_mode")
+  status        String            @default("active")
+  originLat     Float             @map("origin_lat")
+  originLng     Float             @map("origin_lng")
+  destLat       Float             @map("dest_lat")
+  destLng       Float             @map("dest_lng")
+  distanceM     Int?              @map("distance_m")
+  durationS     Int?              @map("duration_s")
+  arrivedAt     DateTime?         @map("arrived_at")
+  startedAt     DateTime          @default(now()) @map("started_at")
+  endedAt       DateTime?         @map("ended_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  user          User              @relation("NavigatorSessions", fields: [userId], references: [id], onDelete: Cascade)
+  targetUser    User              @relation("NavigationTargetSessions", fields: [targetUserId], references: [id], onDelete: Cascade)
+  events        NavigationEvent[]
+
+  @@index([userId])
+  @@index([targetUserId])
+  @@index([status])
+  @@map("navigation_sessions")
+}
+
+model NavigationEvent {
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  eventType   String   @map("event_type")
+  userLat     Float?   @map("user_lat")
+  userLng     Float?   @map("user_lng")
+  destLat     Float?   @map("dest_lat")
+  destLng     Float?   @map("dest_lng")
+  remainingM  Int?     @map("remaining_m")
+  remainingS  Int?     @map("remaining_s")
+  eventData   String?  @map("event_data")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  session     NavigationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("navigation_events")
+}
