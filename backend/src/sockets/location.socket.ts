@@ -40,28 +40,52 @@ export function registerLocationHandlers(io: SocketIOServer, socket: Socket) {
         data: { lastActiveAt: now },
       });
 
-      // Find all friends with active permissions
-      const permissions = await prisma.locationSharingPermission.findMany({
-        where: {
-          ownerId: userId,
-          isActive: true,
-        },
+      // Find all friends
+      const friendships = await prisma.friendship.findMany({
+        where: { OR: [{ userId1: userId }, { userId2: userId }] },
       });
+      const friendIds = friendships.map((f) => (f.userId1 === userId ? f.userId2 : f.userId1));
 
-      const validPermissions = permissions.filter(
-        (p) => !p.expiresAt || new Date(p.expiresAt) > now
-      );
-
-      for (const p of validPermissions) {
-        io.to(`user:${p.viewerId}`).emit('location:friend_updated', {
-          userId,
-          latitude,
-          longitude,
-          accuracy: location.accuracy,
-          heading: location.heading,
-          speed: location.speed,
-          recordedAt: location.recordedAt,
+      if (friendIds.length > 0) {
+        const blocks = await prisma.blockedUser.findMany({
+          where: {
+            OR: [
+              { blockerId: userId, blockedId: { in: friendIds } },
+              { blockerId: { in: friendIds }, blockedId: userId },
+            ],
+          },
         });
+        const blockedIds = new Set([
+          ...blocks.map((b) => b.blockedId),
+          ...blocks.map((b) => b.blockerId),
+        ]);
+
+        const permissions = await prisma.locationSharingPermission.findMany({
+          where: {
+            ownerId: userId,
+            viewerId: { in: friendIds },
+          },
+        });
+        const permissionMap = new Map(permissions.map((p) => [p.viewerId, p]));
+
+        for (const friendId of friendIds) {
+          if (blockedIds.has(friendId)) continue;
+          const p = permissionMap.get(friendId);
+          if (p) {
+            if (p.isActive === false) continue;
+            if (p.expiresAt && new Date(p.expiresAt) < now) continue;
+          }
+
+          io.to(`user:${friendId}`).emit('location:friend_updated', {
+            userId,
+            latitude,
+            longitude,
+            accuracy: location.accuracy,
+            heading: location.heading,
+            speed: location.speed,
+            recordedAt: location.recordedAt,
+          });
+        }
       }
     } catch (error) {
       logger.error('Error handling socket location update:', error);

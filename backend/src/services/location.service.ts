@@ -29,7 +29,7 @@ export function haversineDistance(
 /**
  * Check if a location record is considered fresh
  */
-export function isLocationFresh(recordedAt: Date, maxAgeSeconds: number): boolean {
+export function isLocationFresh(recordedAt: Date, maxAgeSeconds = 7 * 24 * 3600): boolean {
   const ageMs = Date.now() - new Date(recordedAt).getTime();
   return ageMs <= maxAgeSeconds * 1000;
 }
@@ -42,6 +42,8 @@ export async function checkSharingPermission(
   viewerId: string,
   prisma: PrismaClient
 ): Promise<boolean> {
+  if (ownerId === viewerId) return true;
+
   // Check if they are friends
   const uid1 = ownerId < viewerId ? ownerId : viewerId;
   const uid2 = ownerId < viewerId ? viewerId : ownerId;
@@ -67,10 +69,12 @@ export async function checkSharingPermission(
     where: { ownerId_viewerId: { ownerId, viewerId } },
   });
 
-  if (!permission) return false;
-  if (!permission.isActive) return false;
-  if (permission.expiresAt && new Date(permission.expiresAt) < new Date()) return false;
+  if (permission) {
+    if (permission.isActive === false) return false;
+    if (permission.expiresAt && new Date(permission.expiresAt) < new Date()) return false;
+  }
 
+  // By default, approved friendships share location
   return true;
 }
 
@@ -87,7 +91,10 @@ export async function getAuthorizedFriendsLocations(
     permission: any;
   }>
 > {
-  const MAX_AGE_SECONDS = parseInt(process.env.LOCATION_MAX_AGE_SECONDS || '3600', 10);
+  const MAX_AGE_SECONDS = parseInt(
+    process.env.LOCATION_MAX_AGE_SECONDS || (7 * 24 * 3600).toString(),
+    10
+  );
 
   // Get all friendships
   const friendships = await prisma.friendship.findMany({
@@ -123,22 +130,6 @@ export async function getAuthorizedFriendsLocations(
 
   if (friendIds.length === 0) return [];
 
-  // Get sharing permissions (friends sharing with us)
-  const permissions = await prisma.locationSharingPermission.findMany({
-    where: {
-      ownerId: { in: friendIds },
-      viewerId: userId,
-      isActive: true,
-    },
-  });
-
-  // Filter valid permissions
-  const now = new Date();
-  const validPermissions = permissions.filter(
-    (p) => !p.expiresAt || new Date(p.expiresAt) > now
-  );
-  const validOwnerIds = new Set(validPermissions.map((p) => p.ownerId));
-
   // Check for blocks
   const blocks = await prisma.blockedUser.findMany({
     where: {
@@ -153,10 +144,27 @@ export async function getAuthorizedFriendsLocations(
     ...blocks.map((b) => b.blockerId),
   ]);
 
-  // Get locations for valid permission owners
-  const authorizedIds = friendIds.filter(
-    (id) => validOwnerIds.has(id) && !blockedIds.has(id)
-  );
+  // Get sharing permissions (friends sharing with us)
+  const permissions = await prisma.locationSharingPermission.findMany({
+    where: {
+      ownerId: { in: friendIds },
+      viewerId: userId,
+    },
+  });
+
+  const permissionMap = new Map(permissions.map((p) => [p.ownerId, p]));
+  const now = new Date();
+
+  // Friends are authorized unless blocked or permission is explicitly disabled/expired
+  const authorizedIds = friendIds.filter((friendId) => {
+    if (blockedIds.has(friendId)) return false;
+    const p = permissionMap.get(friendId);
+    if (p) {
+      if (p.isActive === false) return false;
+      if (p.expiresAt && new Date(p.expiresAt) < now) return false;
+    }
+    return true;
+  });
 
   if (authorizedIds.length === 0) return [];
 
@@ -165,7 +173,6 @@ export async function getAuthorizedFriendsLocations(
   });
 
   const locationMap = new Map(locations.map((l) => [l.userId, l]));
-  const permissionMap = new Map(validPermissions.map((p) => [p.ownerId, p]));
   const friendMap = new Map(friends.map((f) => [f.id, f]));
 
   return authorizedIds
@@ -177,7 +184,7 @@ export async function getAuthorizedFriendsLocations(
       return {
         friend: friendMap.get(friendId),
         location,
-        permission: permissionMap.get(friendId),
+        permission: permissionMap.get(friendId) || { isActive: true, shareMode: 'always' },
       };
     })
     .filter(Boolean) as Array<{ friend: any; location: any; permission: any }>;

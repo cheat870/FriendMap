@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocationContext } from '@/contexts/LocationContext';
@@ -21,8 +21,10 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
   ),
 });
 
-export default function MapPage() {
+function MapContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetFriendId = searchParams.get('friendId');
   const { user } = useAuth();
   const { position, error: locationError, startSharing, requestLocation } = useLocationContext();
   const { socket } = useSocket();
@@ -55,7 +57,7 @@ export default function MapPage() {
 
   useEffect(() => {
     fetchFriendsLocations();
-    const interval = setInterval(fetchFriendsLocations, 20000);
+    const interval = setInterval(fetchFriendsLocations, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,19 +103,33 @@ export default function MapPage() {
   }, [socket]);
 
   return (
+    <div className="relative w-full h-[calc(100vh-4rem)]">
+      <MapView
+        userLocation={position}
+        friends={friends}
+        currentUser={user}
+        locationError={locationError}
+        targetFriendId={targetFriendId}
+        onRequestLocation={requestLocation}
+        onNavigateToFriend={(friend) => {
+          router.push(`/navigation?friendId=${friend.id}`);
+        }}
+      />
+    </div>
+  );
+}
+
+export default function MapPage() {
+  return (
     <MainLayout showNav={true} showBottom={true}>
-      <div className="relative w-full h-[calc(100vh-4rem)]">
-        <MapView
-          userLocation={position}
-          friends={friends}
-          currentUser={user}
-          locationError={locationError}
-          onRequestLocation={requestLocation}
-          onNavigateToFriend={(friend) => {
-            router.push(`/navigation?friendId=${friend.id}`);
-          }}
-        />
-      </div>
+      <Suspense fallback={
+        <div className="w-full h-[calc(100vh-4rem)] bg-slate-100 flex flex-col items-center justify-center">
+          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-sm font-medium text-gray-500">កំពុងដំណើរការផែនទី (Loading interactive map)...</p>
+        </div>
+      }>
+        <MapContent />
+      </Suspense>
     </MainLayout>
   );
 }

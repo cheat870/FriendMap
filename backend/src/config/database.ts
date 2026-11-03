@@ -40,6 +40,19 @@ export async function connectDatabase(): Promise<void> {
   try {
     await prisma.$connect();
     logger.info('Database connected successfully');
+
+    // Auto-fix: ensure all existing friendships have active sharing by default
+    try {
+      const updateResult = await prisma.locationSharingPermission.updateMany({
+        where: { isActive: false },
+        data: { isActive: true },
+      });
+      if (updateResult.count > 0) {
+        logger.info(`Auto-enabled location sharing for ${updateResult.count} existing friend permissions`);
+      }
+    } catch (e) {
+      logger.warn('Failed to auto-enable permissions on startup:', e);
+    }
   } catch (error) {
     logger.error('Database connection failed:', error);
     throw error;

@@ -16,6 +16,7 @@ interface MapViewProps {
   onRequestLocation?: () => void;
   locationError?: GeolocationPositionError | null;
   activeRoute?: any;
+  targetFriendId?: string | null;
 }
 
 // Map Controller helper to handle flyTo / recenter
@@ -115,20 +116,32 @@ export default function MapView({
   onRequestLocation,
   locationError,
   activeRoute,
+  targetFriendId,
 }: MapViewProps) {
   const [selectedFriend, setSelectedFriend] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
 
-  // Auto-center on first GPS fix
+  // If targeted friend requested, focus directly on them
+  useEffect(() => {
+    if (targetFriendId && friends.length > 0) {
+      const target = friends.find((f) => f.id === targetFriendId && f.location?.latitude);
+      if (target) {
+        setSelectedFriend(target);
+        setMapCenter([Number(target.location.latitude), Number(target.location.longitude)]);
+      }
+    }
+  }, [targetFriendId, friends]);
+
+  // Auto-center on first GPS fix (if not targeting friend)
   const initialCenteredRef = useRef(false);
   useEffect(() => {
-    if (userLocation?.latitude && userLocation?.longitude && !initialCenteredRef.current) {
+    if (!targetFriendId && userLocation?.latitude && userLocation?.longitude && !initialCenteredRef.current) {
       setMapCenter([userLocation.latitude, userLocation.longitude]);
       initialCenteredRef.current = true;
     }
-  }, [userLocation]);
+  }, [userLocation, targetFriendId]);
 
   // Default coordinate (Phnom Penh center if user GPS not yet resolved)
   const defaultCenter: [number, number] = useMemo(() => {

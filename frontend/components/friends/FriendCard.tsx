@@ -50,8 +50,10 @@ export default function FriendCard({
                 <MapPin className="w-3 h-3" />
                 {formatDistance(friend.distanceMeters)}
               </span>
-            ) : (
+            ) : friend.sharing?.theyShareWithMe === false ? (
               <span className="text-gray-400">ទីតាំងត្រូវបានបិទ (Hidden)</span>
+            ) : (
+              <span className="text-amber-500 font-medium">រង់ចាំមិត្តបើក GPS (No GPS yet)</span>
             )}
 
             {isOnline ? (

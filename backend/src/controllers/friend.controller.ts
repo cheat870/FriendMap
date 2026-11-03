@@ -3,6 +3,7 @@ import prisma from '../config/database';
 import { RequestWithUser } from '../types';
 import { sanitizeUser, parsePagination, paginationMeta } from '../utils/helpers';
 import { createNotification, broadcastNotification } from '../services/notification.service';
+import { haversineDistance } from '../services/location.service';
 import logger from '../utils/logger';
 
 // Helper: get the io instance from the app
@@ -60,7 +61,7 @@ export async function getFriends(req: Request, res: Response): Promise<void> {
     const sharingMap = new Map<string, { theyShareWithMe: boolean; iShareWithThem: boolean }>();
     for (const p of permissions) {
       const friendId = p.ownerId === userId ? p.viewerId : p.ownerId;
-      const existing = sharingMap.get(friendId) || { theyShareWithMe: false, iShareWithThem: false };
+      const existing = sharingMap.get(friendId) || { theyShareWithMe: true, iShareWithThem: true };
       if (p.ownerId === friendId && p.viewerId === userId) {
         existing.theyShareWithMe = p.isActive;
       } else if (p.ownerId === userId && p.viewerId === friendId) {
@@ -69,10 +70,49 @@ export async function getFriends(req: Request, res: Response): Promise<void> {
       sharingMap.set(friendId, existing);
     }
 
-    const result = friends.map((f) => ({
-      ...f,
-      sharing: sharingMap.get(f.id) || { theyShareWithMe: false, iShareWithThem: false },
-    }));
+    // Fetch user's own location for distance calculation
+    const myLocation = await prisma.location.findUnique({
+      where: { userId },
+    });
+
+    // Fetch friends locations
+    const locations = await prisma.location.findMany({
+      where: { userId: { in: friendIds } },
+    });
+    const locationMap = new Map(locations.map((l) => [l.userId, l]));
+
+    const result = friends.map((f) => {
+      const sharing = sharingMap.get(f.id) || { theyShareWithMe: true, iShareWithThem: true };
+      const loc = sharing.theyShareWithMe ? locationMap.get(f.id) : null;
+      let distanceMeters: number | undefined = undefined;
+
+      if (loc && myLocation) {
+        distanceMeters = Math.round(
+          haversineDistance(
+            Number(myLocation.latitude),
+            Number(myLocation.longitude),
+            Number(loc.latitude),
+            Number(loc.longitude)
+          )
+        );
+      }
+
+      return {
+        ...f,
+        location: loc
+          ? {
+              latitude: Number(loc.latitude),
+              longitude: Number(loc.longitude),
+              accuracy: loc.accuracy,
+              heading: loc.heading,
+              speed: loc.speed,
+              recordedAt: loc.recordedAt,
+            }
+          : null,
+        distanceMeters,
+        sharing,
+      };
+    });
 
     res.json({ success: true, data: result });
   } catch (error) {
@@ -293,16 +333,16 @@ export async function acceptRequest(req: Request, res: Response): Promise<void> 
       prisma.friendship.create({
         data: { userId1: uid1, userId2: uid2 },
       }),
-      // Auto-create sharing permissions (both directions)
+      // Auto-create sharing permissions (both directions) - default active
       prisma.locationSharingPermission.upsert({
         where: { ownerId_viewerId: { ownerId: friendRequest.senderId, viewerId: userId } },
-        create: { ownerId: friendRequest.senderId, viewerId: userId, isActive: false },
-        update: {},
+        create: { ownerId: friendRequest.senderId, viewerId: userId, isActive: true },
+        update: { isActive: true },
       }),
       prisma.locationSharingPermission.upsert({
         where: { ownerId_viewerId: { ownerId: userId, viewerId: friendRequest.senderId } },
-        create: { ownerId: userId, viewerId: friendRequest.senderId, isActive: false },
-        update: {},
+        create: { ownerId: userId, viewerId: friendRequest.senderId, isActive: true },
+        update: { isActive: true },
       }),
     ]);
 

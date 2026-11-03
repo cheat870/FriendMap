@@ -192,7 +192,7 @@ export default function FriendsPage() {
                   key={f.id}
                   friend={f}
                   userLocation={position}
-                  onLocate={() => router.push('/map')}
+                  onLocate={() => router.push(`/map?friendId=${f.id}`)}
                   onChat={(friend) => router.push(`/chat?friendId=${friend.id}`)}
                   onNavigate={(friend) => router.push(`/navigation?friendId=${friend.id}`)}
                 />
