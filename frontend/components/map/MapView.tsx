@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { Crosshair, Plus, Minus, Search, ShieldCheck } from 'lucide-react';
+import toast from 'react-hot-toast';
 import FriendDetailSheet from './FriendDetailSheet';
 import { calculateDistance } from '@/services/location.service';
 
@@ -12,6 +13,8 @@ interface MapViewProps {
   friends: any[];
   currentUser: any;
   onNavigateToFriend?: (friend: any) => void;
+  onRequestLocation?: () => void;
+  locationError?: GeolocationPositionError | null;
   activeRoute?: any;
 }
 
@@ -109,6 +112,8 @@ export default function MapView({
   friends,
   currentUser,
   onNavigateToFriend,
+  onRequestLocation,
+  locationError,
   activeRoute,
 }: MapViewProps) {
   const [selectedFriend, setSelectedFriend] = useState<any | null>(null);
@@ -116,9 +121,20 @@ export default function MapView({
   const [showSearch, setShowSearch] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
 
+  // Auto-center on first GPS fix
+  const initialCenteredRef = useRef(false);
+  useEffect(() => {
+    if (userLocation?.latitude && userLocation?.longitude && !initialCenteredRef.current) {
+      setMapCenter([userLocation.latitude, userLocation.longitude]);
+      initialCenteredRef.current = true;
+    }
+  }, [userLocation]);
+
   // Default coordinate (Phnom Penh center if user GPS not yet resolved)
   const defaultCenter: [number, number] = useMemo(() => {
-    if (userLocation) return [userLocation.latitude, userLocation.longitude];
+    if (userLocation?.latitude && userLocation?.longitude) {
+      return [userLocation.latitude, userLocation.longitude];
+    }
     return [11.5564, 104.9282];
   }, [userLocation]);
 
@@ -129,10 +145,14 @@ export default function MapView({
 
   // Recenter to user's real GPS
   const handleRecenter = useCallback(() => {
-    if (userLocation) {
+    if (userLocation?.latitude && userLocation?.longitude) {
       setMapCenter([userLocation.latitude, userLocation.longitude]);
+      toast.success('បាននាំទៅកាន់ទីតាំងរបស់អ្នក (Centered)');
+    } else {
+      onRequestLocation?.();
+      toast('កំពុងស្វែងរកទីតាំង GPS... (Locating GPS...)', { icon: '📍' });
     }
-  }, [userLocation]);
+  }, [userLocation, onRequestLocation]);
 
   // Filter friends with valid coordinates
   const friendsWithDistance = useMemo(() => {
@@ -187,6 +207,40 @@ export default function MapView({
           )}
         </div>
       </div>
+
+      {/* GPS Status Banner if not located yet */}
+      {!userLocation && (
+        <div className="absolute top-20 left-4 right-4 z-20 max-w-md mx-auto">
+          {locationError?.code === 1 ? (
+            <div className="bg-amber-500/95 backdrop-blur-md text-white rounded-2xl shadow-xl px-4 py-3 text-xs leading-relaxed border border-amber-400">
+              <p className="font-bold flex items-center gap-1.5">
+                <span>⚠️</span> Safari មិនទាន់អនុញ្ញាតទីតាំង (Location Access)
+              </p>
+              <p className="mt-1 text-[11px] text-amber-100">
+                សូមចូលទៅ <strong>Settings (ការកំណត់) ➡️ Privacy ➡️ Location Services ➡️ Safari Websites</strong> រួចជ្រើសរើស <strong>While Using the App</strong>។
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                onRequestLocation?.();
+                toast('កំពុងស្នើសុំទីតាំង GPS... (Requesting GPS...)', { icon: '📍' });
+              }}
+              className="w-full bg-indigo-600/95 hover:bg-indigo-700 backdrop-blur-md text-white rounded-2xl shadow-xl px-4 py-2.5 flex items-center justify-between transition-transform active:scale-[0.98] border border-indigo-400/30"
+            >
+              <div className="flex items-center gap-2.5 text-left">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                <div>
+                  <p className="text-xs font-bold leading-tight">ចុចទីនេះដើម្បីបង្ហាញទីតាំងរបស់អ្នកលើផែនទី</p>
+                  <p className="text-[10px] text-indigo-200 leading-tight">Tap to enable & show your live GPS position</p>
+                </div>
+              </div>
+              <Crosshair className="w-5 h-5 shrink-0 text-white animate-pulse" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Interactive Leaflet Map */}
       <MapContainer

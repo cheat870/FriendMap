@@ -47,6 +47,12 @@ body {
   margin-top: -1px;
 }
 
+.custom-self-marker,
+.custom-friend-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 /* ── Friend / Self map marker ── */
 .friend-marker-wrapper {
   position: relative;

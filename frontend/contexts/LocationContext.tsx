@@ -19,6 +19,7 @@ interface LocationContextValue {
   isSupported: boolean;
   startSharing: () => void;
   stopSharing: () => void;
+  requestLocation: () => void;
 }
 
 const LocationContext = createContext<LocationContextValue>({
@@ -28,6 +29,7 @@ const LocationContext = createContext<LocationContextValue>({
   isSupported: false,
   startSharing: () => {},
   stopSharing: () => {},
+  requestLocation: () => {},
 });
 
 const MIN_DISTANCE_M = 5;   // send update if moved ≥ 5 m
@@ -76,8 +78,53 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     [token]
   );
 
+  const requestLocation = useCallback(() => {
+    if (!isSupported) return;
+
+    const onSuccess = (pos: GeolocationPosition) => {
+      const coords: LocationCoords = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        altitude: pos.coords.altitude,
+        heading: pos.coords.heading,
+        speed: pos.coords.speed,
+      };
+      setPosition(coords);
+      setError(null);
+      sendUpdate(coords);
+    };
+
+    const onError = (err: GeolocationPositionError) => {
+      console.warn('Geolocation error:', err);
+      // Fallback for timeout or high accuracy failure
+      if (err.code === 3) {
+        navigator.geolocation.getCurrentPosition(onSuccess, (e) => setError(e), {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 10000,
+        });
+      } else {
+        setError(err);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0,
+    });
+  }, [isSupported, sendUpdate]);
+
   const startSharing = useCallback(() => {
-    if (!isSupported || isSharing) return;
+    if (!isSupported) return;
+
+    // Trigger instant position fix
+    requestLocation();
+
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
@@ -103,11 +150,14 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
           sendUpdate(coords);
         }
       },
-      (err) => setError(err),
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 }
+      (err) => {
+        console.warn('Geolocation watch error:', err);
+        setError(err);
+      },
+      { enableHighAccuracy: true, maximumAge: 3_000, timeout: 20_000 }
     );
     setIsSharing(true);
-  }, [isSupported, isSharing, sendUpdate]);
+  }, [isSupported, requestLocation, sendUpdate]);
 
   const stopSharing = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -129,7 +179,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LocationContext.Provider
-      value={{ position, isSharing, error, isSupported, startSharing, stopSharing }}
+      value={{ position, isSharing, error, isSupported, startSharing, stopSharing, requestLocation }}
     >
       {children}
     </LocationContext.Provider>

@@ -24,7 +24,7 @@ const MapView = dynamic(() => import('@/components/map/MapView'), {
 export default function MapPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { position, startSharing } = useLocationContext();
+  const { position, error: locationError, startSharing, requestLocation } = useLocationContext();
   const { socket } = useSocket();
   const [friends, setFriends] = useState<any[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
@@ -107,6 +107,8 @@ export default function MapPage() {
           userLocation={position}
           friends={friends}
           currentUser={user}
+          locationError={locationError}
+          onRequestLocation={requestLocation}
           onNavigateToFriend={(friend) => {
             router.push(`/navigation?friendId=${friend.id}`);
           }}
