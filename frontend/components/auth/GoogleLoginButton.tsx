@@ -19,7 +19,9 @@ export default function GoogleLoginButton({
   const [loading, setLoading] = useState(false);
   const [showConfigNotice, setShowConfigNotice] = useState(false);
 
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const clientId =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+    '715090036708-djgkdmqpurkmoafrkav99tom32eu5m71.apps.googleusercontent.com';
 
   // Real Google OAuth flow
   const handleGoogleAuth = useGoogleLogin({
@@ -43,10 +45,6 @@ export default function GoogleLoginButton({
   });
 
   const handleClick = () => {
-    if (!clientId || clientId.includes('dummy') || clientId.includes('YOUR_')) {
-      setShowConfigNotice(true);
-      return;
-    }
     setLoading(true);
     handleGoogleAuth();
   };

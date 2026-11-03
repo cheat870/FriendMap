@@ -9,7 +9,10 @@ import { sanitizeUser, hashToken } from '../utils/helpers';
 import logger from '../utils/logger';
 import path from 'path';
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_ID =
+  process.env.GOOGLE_CLIENT_ID ||
+  '715090036708-djgkdmqpurkmoafrkav99tom32eu5m71.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_EXPIRES_DAYS = parseInt(process.env.JWT_REFRESH_EXPIRES_DAYS || '7', 10);
@@ -385,11 +388,11 @@ export async function googleLogin(req: Request, res: Response): Promise<void> {
     } | null = null;
 
     if (tokenToVerify) {
-      if (process.env.GOOGLE_CLIENT_ID) {
+      if (GOOGLE_CLIENT_ID) {
         try {
           const ticket = await googleClient.verifyIdToken({
             idToken: tokenToVerify,
-            audience: process.env.GOOGLE_CLIENT_ID,
+            audience: GOOGLE_CLIENT_ID,
           });
           const ticketPayload = ticket.getPayload();
           if (ticketPayload && ticketPayload.email) {

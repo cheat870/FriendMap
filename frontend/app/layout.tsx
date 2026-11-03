@@ -45,12 +45,16 @@ export const viewport: Viewport = {
   themeColor: '#4F46E5',
 };
 
+const GOOGLE_CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  '715090036708-djgkdmqpurkmoafrkav99tom32eu5m71.apps.googleusercontent.com';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${notoSansKhmer.variable}`}>
       <body className="font-sans bg-gray-50 text-gray-900 antialiased">
         <QueryProvider>
-          <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'dummy-google-client-id.apps.googleusercontent.com'}>
+          <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <AuthProvider>
               <SocketProvider>
                 <LocationProvider>
